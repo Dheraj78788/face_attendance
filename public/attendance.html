@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Face Attendance</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Firebase SDKs -->
+<script type="module">
+  // Firebase JS SDK
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-app.js";
+  import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDoHRX0Qu1FvBeBWl5UP4vOQsFJz8sCI9w",
+    authDomain: "face-scan-attendance.firebaseapp.com",
+    projectId: "face-scan-attendance",
+    storageBucket: "face-scan-attendance.appspot.com",
+    messagingSenderId: "920922795249",
+    appId: "1:920922795249:web:fba2807c29a3c5b784cd50"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  window.db = db; // make accessible in main script
+</script>
+
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center p-6 min-h-screen">
+<h1 class="text-3xl font-bold mb-6">📸 Take Attendance</h1>
+
+<video id="video" autoplay class="rounded-xl shadow-lg border-4 border-indigo-600 w-96 h-72"></video>
+<div id="status" class="mt-4 text-lg"></div>
+<a href="/" class="mt-6 bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-xl transition">Back to Home</a>
+
+<script type="module">
+import { addDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.6.1/firebase-firestore.js";
+
+const video = document.getElementById("video");
+const status = document.getElementById("status");
+
+let attendanceMarked = false;
+
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => { video.srcObject = stream; })
+.catch(err => { status.innerText = "❌ Cannot access webcam: " + err; });
+
+// Capture every 2 seconds
+const captureInterval = setInterval(async () => {
+  if(attendanceMarked) return;
+
+  if(video.srcObject){
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(async function(blob){
+          const formData = new FormData();
+          formData.append("image", blob, "frame.jpg");
+
+          try {
+              const response = await fetch("/recognize_face", { method: "POST", body: formData });
+              const result = await response.json();
+
+              if(result.name){
+                  status.innerHTML = `✅ Attendance marked for <b>${result.name}</b>`;
+                  attendanceMarked = true;
+
+                  // Save to Firebase
+                  await addDoc(collection(window.db, "attendance"), {
+                    user_id: result.name,
+                    timestamp: new Date()
+                  });
+
+                  // Stop camera
+                  video.srcObject.getTracks().forEach(track => track.stop());
+
+                  // Popup and redirect
+                  alert(`✅ Attendance for ${result.name} saved successfully!`);
+                  window.location.href = "/";
+
+              } else {
+                  status.innerText = "❌ Face not recognized";
+              }
+          } catch (err) {
+              status.innerText = "❌ Error: " + err;
+          }
+
+      }, "image/jpeg");
+  }
+
+}, 2000);
+</script>
+</body>
+</html>
